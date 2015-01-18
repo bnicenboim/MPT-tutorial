@@ -1,0 +1,246 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{listings}
+
+
+\author{Bruno Nicenboim}
+\title{Bayesian Hierarchical Multinomial Processing Trees}
+
+\usepackage[spanish,german,american]{babel}
+
+%\usepackage{apacite}
+
+%%% instead of apacite
+
+\usepackage{csquotes}
+\usepackage[sortcites=true,backend=biber,style=apa]{biblatex}
+\AtEveryBibitem{\clearfield{month}}
+\AtEveryCitekey{\clearfield{month}}
+\AtEveryBibitem{\clearfield{doi}}
+\AtEveryCitekey{\clearfield{doi}}
+\AtEveryBibitem{\clearfield{url}}
+\AtEveryCitekey{\clearfield{url}}
+\DeclareLanguageMapping{american}{american-apa}
+\addbibresource{mpt.bib}
+
+
+\usepackage{forest}
+
+
+\begin{document}
+
+\maketitle
+
+Adapted from \textcites{MatzkeEtAl2013}[and][]{WagenmakersLee2013ch14}.
+
+\section{A very short introduction}
+Multinomial processing tree (MPT) model is a method that estimates latent variables that have a psychological interpretation given categorical data \parencite[see a review in ][]{BatchelderRiefer1999}.
+
+\section{An application: the pair-clustering paradigm}
+
+ In the pair-clustering paradigm \parencite{BatchelderRiefer1980} participants are presented with a list  word-by-word, such as: 
+\begin{enumerate}
+\item dog
+\item paper
+\item father
+\item train
+\item cat
+\item son
+\item etc. 
+
+\end{enumerate}
+The  list includes two types of items: semantically related word pairs (e.g., dog-cat, father-son) and singletons (i.e., unpaired words, such as paper and train). After the presentation of the study list, participants are required to recall, in any order, as many words as they can. 
+
+The general finding is that semantically related word pairs are recalled in pairs, even when they were not adjacent in the list.
+
+This finding can be taken as evidence for the idea that they were stored and retrieved as a cluster. MPTs \parencite{BatchelderRiefer1980} provide a way to model these memory effects.
+
+
+\section{MPTs}
+\begin{itemize}
+
+\item  MPT is a way to model categorical responses following a multinomial distribution. (The categorical responses could be: Yes or No; blue, read or yellow; True, False, or I don't know; or more complicated categories like in the pair-clustering experiment, but crucially only one category by item.) \footnote{ Multinomial distribution is the generalization of the binomial distribution for more than two possible outcomes. For n independent trials each of which leads to a success for exactly one of k categories, with each category having a given fixed success probability, the multinomial distribution gives the probability of any particular combination of numbers of successes for the various categories.
+}
+\item  MPT models assume that the observed response categories result from a sequences of underlying cognitive events which are represented as a tree.
+
+
+\end{itemize}
+
+\section{A non-hierarchical MPT for the pair-clustering paradigm}
+
+The responses of each participant fall into two independent
+category systems, namely responses to word pairs (cat, dog) and responses to singletons (paper). Each category system is modeled by a separate subtree of the multinomial model.
+
+We will focus on the response to word pairs. There are four possible outcomes:
+ \begin{itemize}
+\item $C_{2wc}$ both words are recalled consecutively
+\item $C_{2wn}$ both words are recalled but not consecutively
+\item $C_{1w}$ only one word of the pair is recalled
+\item $C_{0w}$ no word of the pair is recalled
+ \end{itemize}
+
+\begin{figure}[ht]
+\begin{center}
+\begin{forest}
+where n children=0{tier=word}{}
+[Word Pairs,circle,draw,for tree={ grow=0,child anchor=center-east, child anchor=west}
+  [$1-$c 
+     [$1-$u [ [$1-$u[$C_{0w}$ neither dog nor cat]]
+     		   [u [$C_{1w}$ dog or cat]]
+     		] 
+     ]
+     [u    [ [$1-$u [$C_{1w}$ dog or cat]]
+     		 [u [$C_{2wn}$ {dog,..., cat}]]
+     		] 
+     ]
+  ]
+  [c
+     [$1-$r [$C_{0w}$ neither dog nor cat] ]
+     [r [$C_{2wc}$ dog and cat]] 
+  ]
+]
+
+\end{forest}
+\end{center}
+\end{figure}
+
+The parameters are
+\begin{itemize}
+\item c is the probability that a word pair is clustered and stored in memory
+\item r is the conditional probability that a word pair is retrieved from memory (given that it was clustered)
+\item u is the conditional probability that a member of a pair is stored and retrieved from memory (given that the pair was not stored as a cluster)
+\end{itemize}
+
+Navigating through the branches of the MPT, we can estimate the probabilities of the the four responses (the categorical outcome):
+
+\begin{itemize}
+\item $Pr(C_{2wc}| c,r,u)= c \cdot r$
+\item $Pr(C_{2wn}| c,r,u)= (1-c) \cdot u^2$
+\item $Pr(C_{1w} | c,r,u)= 2u \cdot(1-c) \cdot(1-u)$
+\item $Pr(C_{0w} | c,r,u)= c \cdot (1-r) +(1-c)\cdot(1-u)^2$
+
+\end{itemize}
+
+It is  straightforward to model this in Stan, the probabilities of the different categories go into the transformed parameters (see Listing \ref{tp_model_nh}). And the data is modeled as a multinomial distribution  (see Listing \ref{model_model_nh}); if priors are not specified, then a beta distribution with a=1 and b=1 is assumed for  the parameters \emph{c}, \emph{r}, and \emph{u}.
+
+\lstset{
+language=C++,
+basicstyle=\small\sffamily,
+numbers=left,
+numberstyle=\tiny,
+frame=tb,
+columns=fullflexible,
+showstringspaces=false
+}
+\begin{lstlisting}[caption=Probabilities of the responses in Stan;  simplex is a vector of non-negative values that sum to one.,
+  label=tp_model_nh,
+  float=h!]
+transformed parameters {
+  simplex[4] theta;
+
+  theta[1] <- c * r;  
+  theta[2] <- (1 - c) * u^2; 
+  theta[3] <- (1 - c) * 2 * u * (1 - u); 
+  theta[4] <- c * (1 - r) + (1 - c) * (1 - u)^2; 
+}
+\end{lstlisting}
+
+\begin{lstlisting}[caption=The data is assumed to be produced by a multinomial distribution; priors for the parameters are beta distributions with a=1 and b=1.",
+  label=model_model_nh,
+  float=h!]
+model {
+  k ~ multinomial(theta);
+}
+\end{lstlisting}
+
+
+\section{What can we do with (non-hierarchical) MPTs?}
+\begin{enumerate}
+\item We can check if the MPT fits the data. (If it doesn't, there's something wrong with the theory that assumes that model.)
+\begin{itemize}
+\item posterior predictive checking
+\item DIC
+\item wAIC
+\item Bayes Factor
+\end{itemize}
+\item We can check if a manipulation changes certain parameter in an expected way.
+\end{enumerate}
+
+\subsection{Examples:}
+See example 1 in nhmpt.R for  a model that \emph{does} fit the data.
+Things to try in example 1:
+\begin{itemize}
+\item Change the number of subjects and/or items
+\item Change the values of the parameters
+\end{itemize}
+
+See example 2 in nhmpt.R for  a model that does not fit the data.
+
+
+\section{Why do we need hierarchical MPTs?}
+
+See what happens in example 3.
+
+\subsection{Why is this?}
+
+The use of aggregated data relies on the assumption that the estimated parameters do not vary (too much at least) between subjects. If this assumption is violated, the analysis of
+aggregated data may lead to erroneous conclusions (see the results of example 3). In addition, reliance on aggregated data in the presence of parameter heterogeneity may lead to biased parameter
+estimates, the underestimation of confidence intervals, and the inflation of Type I error rates.
+
+\subsection{How to solve it?}
+
+With Hierarchical MPTs.
+
+% We can assume that the participant (and item) effects come from multivariate normal distributions with mean 0.
+If we ignore the items, we can assume that there is a parameter for each subject, which includes the effect that we are trying to estimate and the random effect. The individual subject parameters are still probabilities, but their variability $\hat{\delta^c_i}$ is modeled in a probit-transformed space (not constrained to be between 0 and 1, but drawn from a normal distribution with mean 0 and \emph{sd} 1). Because we \emph{do} want to constrain the individual subject parameters to be between 0 and 1, we use the cumulative distribution function $\Phi$ as follows:\footnote{In r this can be done with pnorm(), in Stan with Phi(). Try pnorm(0), pnorm(1.96), pnorm(10000), pnorm(-10000); and its inverse qnorm() }.
+
+\begin{itemize}
+\item $c_i  = \Phi(\hat{\mu^c} + \hat{\delta^c_i})$
+
+\item $r_i  = \Phi(\hat{\mu^r} + \hat{\delta^r_i})$
+
+\item $u_i  = \Phi(\hat{\mu^u} + \hat{\delta^u_i})$
+\end{itemize}
+
+We assume that individual differences (or random effects) are draws from a multivariate Gaussian distribution with mean 0\footnote{I won't enter into the details of why I implemented the random effects the way I did in the Stan model, but you can check the code in hmpt.R.}:
+\begin{itemize}
+\item $(\hat{\delta^c_i},\hat{\delta^r_i},\hat{\delta^u_i})\sim MvGaussian(0,\Sigma)$
+\end{itemize}
+
+Notice that Stan estimated general parameters in probit space ($\hat{\mu^c}$,$\hat{\mu^r}$, and $\hat{\mu^u}$), if we want to recover them in probability space, we need to back transform them. This is done at the \emph{generated quantities} part of the model (or it could be done later in r with pnorm()).
+
+\begin{itemize}
+\item $c  = \Phi(\hat{\mu^c})$
+
+\item $r  = \Phi(\hat{\mu^r})$
+
+\item $u  = \Phi(\hat{\mu^u})$
+\end{itemize}
+
+
+
+\subsection{Examples:}
+
+See example 4 in hmpt.R and compare the results with example 3.
+
+Things to try:
+\begin{itemize}
+\item Try to add also random effects by items.
+\item If the made-up values are generated with the function \emph{gen\_pair\_clustering\_MPT\_WMC}, it creates a correlation between one of the parameters and the covariate pcu (partial credits units score for WMC). Which parameter? Try to incorporate this into the model.
+\end{itemize}
+
+
+
+
+
+\printbibliography
+
+\end{document}
+
+
+
+
+% It is a matter of simple algebra to show that if we collect data D = (n1, n2, n3, n4) and estimate the category probabilities by relative frequencies, Pj = nj /N, then we can solve the four model equations for parameters estimates (denoted by ‘*’) yielding u*= 2P2 /(2P2 + P3), c* = 1-P2 /(u*)2 , and r*= P1 /c*. In order for these equations to yield estimates of the parameters in the interval (0,1) it is necessary that (P3)2 < 4P2(1-P2-P3).
