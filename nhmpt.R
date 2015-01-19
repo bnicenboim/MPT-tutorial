@@ -147,8 +147,8 @@ d3 <- gen_pair_clustering_MPT(param_MPT=c(.6,.5,.9),
                         sdev_subj  <- c(1.2,1.2,1.2),
 						sdev_item  <- c(0.03,0.03,0.03),
 						rho_subj <- matrix(c( 1,.6,.6,
-		  									 .6,.1,.1,
-		  									 .6,.6,.1),nrow=3,byrow=T)
+		  									 .6,1,.6,
+		  									 .6,.6,1),nrow=3,byrow=T)
 
                         )
 
